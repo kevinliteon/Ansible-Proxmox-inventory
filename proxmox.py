@@ -205,6 +205,10 @@ def main_list(options, config_path):
         }
     }
 
+    config_data = {}
+    with open(config_path, "r") as config_file:
+        config_data = json.load(config_file)
+
     proxmox_api = ProxmoxAPI(options, config_path)
     proxmox_api.auth()
 
@@ -218,6 +222,10 @@ def main_list(options, config_path):
             # if it was some other error, reraise it
             raise error
         results['all']['hosts'] += qemu_list.get_names()
+        
+        for key,machine in enumerate(results['all']['hosts']):
+            results['all']['hosts'][key] = update_hostname(machine, config_data)
+
         results['_meta']['hostvars'].update(qemu_list.get_variables())
         if proxmox_api.version().get_version() >= 4.0:
             lxc_list = proxmox_api.node_lxc(node)
@@ -237,6 +245,7 @@ def main_list(options, config_path):
 
         # Check only VM/containers from the current node
         for vm in node_hostvars:
+            hostname = update_hostname(vm, config_data)
             vmid = results['_meta']['hostvars'][vm]['proxmox_vmid']
             try:
                 type = results['_meta']['hostvars'][vm]['proxmox_type']
@@ -263,7 +272,7 @@ def main_list(options, config_path):
                         results[group] = {
                             'hosts': []
                         }
-                    results[group]['hosts'] += [vm]
+                    results[group]['hosts'] += [hostname]
 
             # Create group 'running'
             # so you can: --limit 'running'
@@ -273,7 +282,7 @@ def main_list(options, config_path):
                     results['running'] = {
                         'hosts': []
                     }
-                results['running']['hosts'] += [vm]
+                results['running']['hosts'] += [hostname]
 
             results['_meta']['hostvars'][vm].update(metadata)
 
@@ -284,6 +293,12 @@ def main_list(options, config_path):
         }
 
     return results
+
+
+def update_hostname(vm, config_data):
+    if not config_data['domain']:
+        return vm
+    return "{vm}.{domain}".format(vm=vm, domain=config_data['domain'])
 
 
 def main_host(options, config_path):
